@@ -123,30 +123,45 @@ class Automato
         return $this->alfabeto;
     }
 
+    public function getTransicao(){
+        return $this->transicao;
+    }
+
     public function imprimir()
     {
-        echo ("<p>Alfabeto: " . implode($this->alfabeto) . "</p>");
-        echo ("<p>Estados: ");
+        if (in_array('&', $this->alfabeto)) {
+            $temp = implode('', $this->alfabeto);
+            $temp = str_replace('&', '', $temp);
+            $this->alfabeto = str_split($temp);
+            array_push($this->alfabeto, '&');
+        }
+
+        echo ("</br><table cellspacing='0' cellpading='5' border='1'><tbody>");
+        echo ("<tr style='color:#FFFFFF'><td bgcolor='#006400'>&nbsp;</td>");
+        for ($i = 0; $i < count($this->alfabeto); $i++) {
+            echo ("<td align='center' bgcolor='#006400' style='font-weight: 600;'>" . $this->alfabeto[$i] . "</td>");
+        }
+
+        echo ("</tr>");
         for ($i = 0; $i < count($this->estado); $i++) {
+            echo ("<tr><td align='center' bgcolor='#006400' style='color:#FFFFFF'>");
             if ($this->inicial == $i) {
                 echo ("->");
             }
             for ($j = 0; $j < count($this->finais); $j++) {
                 if ($this->finais[$j] == $i) {
                     echo ("*");
-                    break;
+                    // break;
                 }
             }
-            echo ("q" . $this->estado[$i] . " ");
-        }
-        echo ("</p>");
-        echo ("<p>Transições: </p>");
-        for ($i = 0; $i < count($this->estado); $i++) {
+            echo ("q" . $this->estado[$i] . "</td>");
             for ($j = 0; $j < count($this->alfabeto); $j++) {
                 $retorno = $this->transicao->getFuncaoTransicao($this->estado[$i], $this->alfabeto[$j]);
-                if (count($retorno) == 0) continue;
-                echo ("T(q" . $this->estado[$i] . "," . $this->alfabeto[$j] . ") = {");
-
+                if (count($retorno) == 0) {
+                    echo ("<td align='center'>&nbsp;</td>");
+                    continue;
+                }
+                echo ("<td align='center'>{");
                 for ($k = 0; $k < count($retorno); $k++) {
                     if ($k > 0 && $k < count($retorno)) {
                         echo (",q" . $retorno[$k]);
@@ -154,9 +169,11 @@ class Automato
                         echo ("q" . $retorno[$k]);
                     }
                 }
-                echo ("}<br>");
+                echo ("}</td>");
             }
+            echo ("</tr>");
         }
+        echo ("<tbody></table>");
     }
 
     public function uneAlfabetos(array $a, array $b)
@@ -187,23 +204,29 @@ class Automato
 
     public function fechoDeKleene(Automato $a)
     {
+        if (!in_array('&', $a->alfabeto)) {
+            $a->setSimbolo('&');
+        };
+
         $a->setTransicao($a->finais[0], '&', $a->inicial);
+        $novo = $a;
         $novo = new Automato();
-        $novo->estado = $a->estado;
-        $novo->alfabeto = $this->uneAlfabetos($a->alfabeto, []);
-        $novo->transicao = $a->transicao;
+        $novo->alfabeto = $a->alfabeto;
 
         $novo->setEstado(0);
-        $novo->setEstado(count($novo->estado));
+        $novo->setEstadoInicial(0);
+
+        $startA = 1;
+        $novo->renomeiaEstados($a, $startA);
 
         $qtdEstados = count($novo->estado);
+        $novo->setEstado($qtdEstados);
 
-        $novo->inicial = $qtdEstados - 2;
-        $novo->finais[0] = $qtdEstados - 1;
+        $novo->finais[0] = $qtdEstados;
 
-        $novo->setTransicao($novo->estado[$qtdEstados - 2], '&', $novo->estado[$qtdEstados - 1]);
-        $novo->setTransicao($novo->estado[$qtdEstados - 2], '&', $a->inicial);
-        $novo->setTransicao($a->finais[0], '&', $novo->estado[$qtdEstados - 1]);
+        $novo->setTransicao($novo->inicial, '&', $novo->inicial + $startA);
+        $novo->setTransicao($novo->inicial, '&', $novo->finais[0]);
+        $novo->setTransicao($novo->finais[0] - $startA, '&', $novo->finais[0]);
 
         return $novo;
     }
@@ -350,47 +373,78 @@ class Automato
         }
     }
 
+    private function setEstadoMorto($aux, $alfabeto)
+    {
+
+        if (!array_search(999, $this->estado)) {
+            $this->setEstado(999);
+            for ($i = 0; $i < count($this->alfabeto); $i++) {
+                $this->transicao->setFuncaoTransicao(999, $this->alfabeto[$i], 999);
+            }
+        }
+
+        $this->transicao->setFuncaoTransicao($aux, $alfabeto, 999);
+    }
+
+    private function estadoFinalFecho($finais_antigo, $antigo, $estado, $novo)
+    {
+        for ($l = 0; $l < count($finais_antigo); $l++) {
+            for ($m = 0; $m < count($antigo->fecho[$estado]); $m++) {
+                if ($finais_antigo[$l] == $antigo->fecho[$estado][$m]) {
+                    $this->setEstadoFinal($novo);
+                    break;
+                }
+            }
+        }
+    }
+
     private function auxConverteParaAFD($atual, $alfabeto, $novos_estados, $aux, $antigo)
     {
         for ($i = 0; $i < count($alfabeto); $i++) {
             $estado = [];
             for ($j = 0; $j < count($atual); $j++) {
-                $temp_estado = $antigo->transicao->getFuncaoTransicao($atual[$j], $alfabeto[$i])[0];
-                if ($temp_estado)
-                    array_push($estado, $temp_estado);
+                $temp_estado = $antigo->transicao->getFuncaoTransicao($atual[$j], $alfabeto[$i]);
+                if (count($temp_estado) > 0) {
+                    for ($k = 0; $k < count($temp_estado); $k++) {
+                        array_push($estado, $temp_estado[$k]);
+                        //$estado = $temp_estado[$k];
+                        break;
+                        // echo(json_encode($temp_estado[$k]));
+                    }
+                }
             }
 
+
             if ($estado) {
-                for ($k = 0; $k < count($estado); $k++) {
-                    if ($antigo->fecho[$estado[$k]]) {
-                        $novo = implode("", $antigo->fecho[$estado[$k]]);
-                        $novo = intval($novo);
-                        if (!in_array($novo, $this->estado))
-                            $this->setEstado($novo);
+                $estado = $estado[0];
+                // for ($k = 0; $k < count($estado); $k++) {
+                if ($antigo->fecho[$estado]) {
+                    $novo = implode("", $antigo->fecho[$estado]);
+                    $novo = intval($novo);
+                    if (!in_array($novo, $this->estado)) {
+                        $this->setEstado($novo);
 
                         $finais_antigo = $antigo->finais;
 
-                        for ($l = 0; $l < count($finais_antigo); $l++) {
-                            for ($m = 0; $m < count($antigo->fecho[$estado[$k]]); $m++) {
-                                if ($finais_antigo[$l] == $antigo->fecho[$estado[$k]][$m]) {
-                                    $this->setEstadoFinal($novo);
-                                }
-                            }
-                        }
-
+                        $this->estadoFinalFecho($finais_antigo, $antigo, $estado, $novo);
+                        
                         $this->transicao->setFuncaoTransicao($aux, $alfabeto[$i], $novo);
-                        array_push($novos_estados, $antigo->fecho[$estado[$k]]);
+                        $anterior = $antigo->fecho[$estado];
+                        array_push($novos_estados, $anterior);
                     } else {
-                        $this->transicao->setFuncaoTransicao($aux, $alfabeto[$i], 999);
+                        $this->transicao->setFuncaoTransicao($aux, $alfabeto[$i], $novo);
                     }
+                } else {
+                    $this->setEstadoMorto($aux, $alfabeto[$i]);
                 }
+                // }
             } else {
-                $this->transicao->setFuncaoTransicao($aux, $alfabeto[$i], 999);
+                $this->setEstadoMorto($aux, $alfabeto[$i]);
             }
         }
 
-        $atual = array_shift($novos_estados);
 
+        $atual = array_shift($novos_estados);
 
         if ($atual) {
             $novo = implode("", $atual);
@@ -410,15 +464,11 @@ class Automato
             $alfabeto = str_split($temp);
         }
 
-        $novo->setEstado(999);
-
-        for ($i = 0; $i < count($alfabeto); $i++) {
-            $novo->setSimbolo($alfabeto[$i]);
-            $novo->transicao->setFuncaoTransicao(999, $alfabeto[$i], 999);
-        }
+        $novo->alfabeto = $alfabeto;
 
         $this->fecho = [];
         $fecho = $this->buscarFechoE();
+        $this->fecho = $fecho;
 
         $atual = array_shift($fecho);
         $temp = [];
@@ -435,18 +485,19 @@ class Automato
         $novo->setEstado($aux);
         $novo->setEstadoInicial($aux);
 
-        
         $novos_estados = [];
+
+        $novo->estadoFinalFecho($this->finais, $this, 0, $aux);
         $novo->auxConverteParaAFD($atual, $alfabeto, $novos_estados, $aux, $this);
-        
+
         $temp_estados = $novo->estado;
-        
+
         $temp_estados1 = array_slice($temp_estados, $novo->inicial + 1);
         $temp_estados2 = array_slice($temp_estados, 0, $novo->inicial);
         $temp_estados = array_merge($temp_estados1, $temp_estados2);
-        
+
         array_unshift($temp_estados, $novo->estado[$novo->inicial]);
-        
+
         $novo->estado = $temp_estados;
         $novo->inicial = 0;
 
@@ -455,6 +506,7 @@ class Automato
         for ($i = 0; $i < count($novo->estado); $i++) {
             $tab_eq[$i] = $novo->estado[$i];
         }
+
 
         $saida = new Automato();
         $saida->alfabeto = $novo->alfabeto;
@@ -467,7 +519,6 @@ class Automato
             for ($j = 0; $j < count($novo->alfabeto); $j++) {
                 $retorno = $novo->transicao->getFuncaoTransicao($novo->estado[$i], $novo->alfabeto[$j]);
                 $a = array_search($novo->estado[$i], $tab_eq);
-
                 if (count($retorno) == 0) continue;
                 for ($k = 0; $k < count($retorno); $k++) {
                     $b = array_search($retorno[$k], $tab_eq);
@@ -477,13 +528,16 @@ class Automato
             $i++;
         }
 
+
         $saidaInicial = array_search($novo->estado[$novo->inicial], $tab_eq);
         $saida->setEstadoInicial($saidaInicial);
 
-        for ($i=0; $i < count($novo->finais); $i++) { 
+        for ($i = 0; $i < count($novo->finais); $i++) {
             $saidaFinal = array_search($novo->estado[$novo->finais[$i]], $tab_eq);
             $saida->setEstadoFinal($saidaFinal);
         }
+        
         $saida->imprimir();
+        return $saida;
     }
 }
